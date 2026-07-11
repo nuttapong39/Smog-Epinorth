@@ -1,0 +1,19 @@
+# ── Secrets & runtime data (ห้าม commit) ──
+# config.php: encryption key / hash salt / MOPH keys / รหัส DB จริง — ใช้ config.example.php เป็นต้นแบบ
+config.php
+# config.json: การเชื่อมต่อจริง (รหัสผ่าน DB) — สร้างจากหน้า setup
+config.json
+# SQLite (sync_log.db): settings, MOPH keys, cron token
+*.db
+# logs
+*.log
+
+# ── Claude Code internal tooling ──
+.claude/
+
+# ── OS / editor ──
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
