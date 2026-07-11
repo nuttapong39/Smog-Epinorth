@@ -20,7 +20,7 @@ $dllPg   = $extDir . DIRECTORY_SEPARATOR . 'php_pgsql.dll';
 $libpq   = $phpDir . DIRECTORY_SEPARATOR . 'libpq.dll';
 
 // อ่าน tail ของ log แล้วกรองเฉพาะบรรทัดที่เกี่ยวกับการโหลด extension
-function tail_grep($file, $needleRegex, $bytes = 60000) {
+function tail_grep($file, $needleRegex, $bytes = 400000) {
     if (!is_file($file) || !is_readable($file)) return null;
     $size = filesize($file);
     $fh = fopen($file, 'rb');
