@@ -29,24 +29,48 @@ function core_fetchData($conn, $dateStart, $dateEnd) {
     return $stmt->fetchAll();
 }
 
-function core_sendPostRequest($url, $headers, $body) {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_HTTPHEADER     => $headers,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $body,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => CURL_TIMEOUT,
-        CURLOPT_CONNECTTIMEOUT => CURL_CONNECT_TIMEOUT,
-        CURLOPT_SSL_VERIFYHOST => 2,
-        CURLOPT_SSL_VERIFYPEER => true,
-    ]);
-    $res = curl_exec($ch);
-    if ($res === false) { $err = curl_error($ch); curl_close($ch); throw new Exception('cURL: '.$err); }
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($code >= 400) throw new Exception("HTTP $code: $res");
-    return $res;
+function core_sendPostRequest($url, $headers, $body, $maxAttempts = 3) {
+    $attempt = 0;
+    while (true) {
+        $attempt++;
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER     => $headers,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $body,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => CURL_TIMEOUT,
+            CURLOPT_CONNECTTIMEOUT => CURL_CONNECT_TIMEOUT,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $res     = curl_exec($ch);
+        $curlErr = ($res === false) ? curl_error($ch) : null;
+        $code    = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($curlErr === null && $code < 400) return $res; // สำเร็จ
+
+        // ตัดสินว่าเป็น error ชั่วคราว (transient) ที่ควรลองใหม่หรือไม่
+        // - cURL transport error (network/timeout)
+        // - HTTP 5xx (server error) — รวมถึง deadlock ฝั่งเซิร์ฟเวอร์
+        // - body ระบุ deadlock (rollback แล้ว ส่งซ้ำปลอดภัย)
+        $isTransient = ($curlErr !== null)
+            || ($code >= 500)
+            || (stripos((string)$res, 'Deadlock') !== false)
+            || (stripos((string)$res, 'try restarting transaction') !== false);
+
+        if ($isTransient && $attempt < $maxAttempts) {
+            $sleep = (int) pow(2, $attempt); // backoff: 2s, 4s
+            error_log("core_sendPostRequest transient (attempt $attempt/$maxAttempts), retry in {$sleep}s: " . ($curlErr ?? "HTTP $code: $res"));
+            sleep($sleep);
+            continue;
+        }
+
+        // ไม่ transient (เช่น HTTP 4xx) หรือ retry ครบแล้ว → โยน error รูปแบบเดิม
+        if ($curlErr !== null) throw new Exception('cURL: '.$curlErr);
+        throw new Exception("HTTP $code: $res");
+    }
 }
 
 function core_getJwtToken() {
