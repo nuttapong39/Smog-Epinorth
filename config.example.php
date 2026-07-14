@@ -29,12 +29,21 @@ function config_save(array $cfg) {
 
 $__cfg = config_load();
 
+// ชนิดฐานข้อมูล: 'pgsql' (PostgreSQL, default) หรือ 'mysql' (MySQL/MariaDB — HOSxP ดั้งเดิม)
+$__driver = strtolower(trim($__cfg['db_driver'] ?? 'pgsql'));
+if ($__driver !== 'mysql') $__driver = 'pgsql';
+define('DB_DRIVER', $__driver);
+
 define('PGSQL_HOST', $__cfg['pgsql_host'] ?? '127.0.0.1');
 define('PGSQL_USER', $__cfg['pgsql_user'] ?? 'postgres');
 define('PGSQL_PWD',  $__cfg['pgsql_pwd']  ?? '');
 define('PGSQL_DB',   $__cfg['pgsql_db']   ?? 'your_database');
-define('PGSQL_PORT', (int)($__cfg['pgsql_port'] ?? 5432)); // พอร์ตมาตรฐาน PostgreSQL = 5432
-define('PGSQL_CHARSET', "UTF8");
+// พอร์ต default ตาม driver: MySQL = 3306, PostgreSQL = 5432
+define('PGSQL_PORT', (int)($__cfg['pgsql_port'] ?? ($__driver === 'mysql' ? 3306 : 5432)));
+define('PGSQL_CHARSET', "UTF8"); // ใช้กับสาย PostgreSQL (SET client_encoding)
+// Charset ตอนต่อฐานข้อมูล — MySQL HOSxP ดั้งเดิมเก็บภาษาไทยเป็น tis620
+define('DB_CHARSET', $__driver === 'mysql' ? ($__cfg['db_charset'] ?? 'tis620') : 'UTF8');
+unset($__driver);
 
 define('USERNAME', $__cfg['username'] ?? 'uXXXXX'); // รหัสสถานบริการ ขึ้นต้นด้วย u
 define('PASSWORD', $__cfg['password'] ?? '');
@@ -60,8 +69,10 @@ define('DATE_END', $date_end);
 define('CURL_TIMEOUT', 60); // วินาที
 define('CURL_CONNECT_TIMEOUT', 30); // วินาที
 
-// SQL Query Configuration (PostgreSQL 15)
-define('SQL_QUERY', "
+// SQL Query Configuration — มี 2 ชุดตามชนิดฐานข้อมูล เลือกตาม DB_DRIVER ด้านล่าง
+
+// PostgreSQL 15 syntax (TO_CHAR, SUBSTRING ... FROM ... FOR)
+define('SQL_QUERY_PGSQL', "
     SELECT
         (SELECT opdconfig.hospitalcode FROM opdconfig LIMIT 1) AS hospcode,
         vn_stat.hn AS pid,
@@ -101,6 +112,51 @@ define('SQL_QUERY', "
             OR SUBSTRING(ovstdiag.icd10 FROM 1 FOR 3) IN ('H10', 'L50', 'R04', 'Z34', 'Z35', 'E10', 'E11', 'E12', 'E13', 'E14', 'L30', 'Z58', 'Y97')
         )
 ");
+
+// MySQL / MariaDB syntax (DATE_FORMAT, SUBSTRING(str, pos, len)) — HOSxP ดั้งเดิม
+define('SQL_QUERY_MYSQL', "
+    SELECT
+        (SELECT opdconfig.hospitalcode FROM opdconfig LIMIT 1) AS hospcode,
+        vn_stat.hn AS pid,
+        DATE_FORMAT(patient.birthday, '%Y-%m-%d') AS birth,
+        vn_stat.sex,
+        COALESCE(
+            NULLIF(
+                CONCAT(patient.chwpart, patient.amppart, patient.tmbpart, patient.moopart),
+                ''
+            ),
+            '00000000'
+        ) AS addrcode,
+        vn_stat.hn,
+        vn_stat.vn AS seq,
+        DATE_FORMAT(vn_stat.vstdate, '%Y-%m-%d %H:%i:%s') AS date_serv,
+        ovstdiag.diagtype,
+        ovstdiag.icd10 AS diagcode,
+        kskdepartment.department AS clinic,
+        ovstdiag.doctor AS provider,
+        DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s') AS d_update,
+        vn_stat.cid AS cid,
+        CASE WHEN oapp.vn IS NOT NULL THEN 'Y' ELSE 'N' END AS appoint,
+        CASE WHEN ovst.an IS NOT NULL THEN 'Y' ELSE 'N' END AS admit,
+        CASE WHEN er_regist.vn IS NOT NULL THEN 'Y' ELSE 'N' END AS er
+    FROM
+        vn_stat
+        LEFT JOIN oapp ON vn_stat.vstdate = oapp.nextdate AND vn_stat.hn = oapp.hn
+        LEFT JOIN er_regist ON vn_stat.vn = er_regist.vn
+        INNER JOIN patient ON vn_stat.hn = patient.hn
+        INNER JOIN ovstdiag ON vn_stat.vn = ovstdiag.vn
+        INNER JOIN ovst ON ovst.vn = vn_stat.vn
+        INNER JOIN kskdepartment ON kskdepartment.depcode = ovst.main_dep
+    WHERE
+        vn_stat.vstdate BETWEEN ? AND ?
+        AND (
+            SUBSTRING(ovstdiag.icd10, 1, 1) IN ('I', 'J')
+            OR SUBSTRING(ovstdiag.icd10, 1, 3) IN ('H10', 'L50', 'R04', 'Z34', 'Z35', 'E10', 'E11', 'E12', 'E13', 'E14', 'L30', 'Z58', 'Y97')
+        )
+");
+
+// เลือก query ตาม driver ที่ตั้งไว้
+define('SQL_QUERY', DB_DRIVER === 'mysql' ? SQL_QUERY_MYSQL : SQL_QUERY_PGSQL);
 
 // Config for hash — ⚠️ ใส่ค่าสุ่มของคุณเอง
 define('HASH_SALT', 'CHANGE_ME_RANDOM_SALT');

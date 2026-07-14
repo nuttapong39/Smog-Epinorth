@@ -33,6 +33,27 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_keys') {
     $flashMsg = 'บันทึก Client-key / Secret-key เรียบร้อย'; $flashType = 'success';
 }
 
+// Save database driver (PostgreSQL / MySQL) — เก็บลง config.json เพื่อให้ cron แบบ headless ใช้ด้วย
+if (isset($_POST['action']) && $_POST['action'] === 'save_db_driver') {
+    $driver = strtolower(trim($_POST['db_driver'] ?? 'pgsql'));
+    if ($driver !== 'mysql') $driver = 'pgsql';
+    $cfg = config_load();
+    $prevDriver = strtolower($cfg['db_driver'] ?? 'pgsql');
+    $cfg['db_driver'] = $driver;
+    // ปรับ port default ให้เข้ากับ driver ใหม่ (เฉพาะกรณีที่ยังเป็นค่า default ของอีก driver)
+    $curPort = (int)($cfg['pgsql_port'] ?? 0);
+    if ($driver === 'mysql' && ($curPort === 5432 || $curPort === 0)) $cfg['pgsql_port'] = 3306;
+    if ($driver === 'pgsql' && ($curPort === 3306 || $curPort === 0)) $cfg['pgsql_port'] = 5432;
+    if (config_save($cfg)) {
+        $label = $driver === 'mysql' ? 'MySQL' : 'PostgreSQL';
+        $flashMsg = 'บันทึกชนิดฐานข้อมูลเป็น ' . $label . ' เรียบร้อย'
+                  . ($driver !== $prevDriver ? ' — อย่าลืมตรวจ Host/Port/User/Password/Database ที่หน้า "แก้ไขการเชื่อมต่อ" ให้ตรงกับ ' . $label : '');
+        $flashType = 'success';
+    } else {
+        $flashMsg = 'บันทึกไม่สำเร็จ — ตรวจสอบสิทธิ์การเขียนไฟล์ config.json'; $flashType = 'danger';
+    }
+}
+
 // Save schedule
 if (isset($_POST['action']) && $_POST['action'] === 'save_schedule') {
     $enabled = isset($_POST['schedule_enabled']) ? '1' : '0';
@@ -103,6 +124,9 @@ if (isset($_POST['action']) && $_POST['action'] === 'run_now') {
 $currentName   = getHospitalName();
 $currentCk     = getMophClientKey();
 $currentSk     = getMophSecretKey();
+// อ่านสด ๆ จาก config.json เผื่อเพิ่งบันทึกใน request นี้ (DB_DRIVER ถูก define ตั้งแต่ include แล้ว)
+$currentDriver = strtolower(config_load()['db_driver'] ?? (defined('DB_DRIVER') ? DB_DRIVER : 'pgsql'));
+if ($currentDriver !== 'mysql') $currentDriver = 'pgsql';
 $sched         = getScheduleConfig();
 $cronToken     = getCronToken();
 $lastPing      = getSetting('cron_last_ping', null);
@@ -435,6 +459,47 @@ layoutHeader('ตั้งค่าระบบ', 'settings');
             </details>
         </div>
         <?php endif; ?>
+    </div>
+</div>
+
+<!-- Database driver (PostgreSQL / MySQL) -->
+<div class="card mb-4">
+    <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
+        <h6 class="mb-0 fw-semibold"><i class="bi bi-database-fill-gear text-primary me-2"></i>ชนิดฐานข้อมูล (Database Driver)</h6>
+        <span class="badge <?php echo $currentDriver === 'mysql' ? 'bg-warning text-dark' : 'bg-primary'; ?>">
+            <?php echo $currentDriver === 'mysql' ? 'MySQL' : 'PostgreSQL'; ?>
+        </span>
+    </div>
+    <div class="card-body p-4">
+        <p class="text-muted mb-3" style="font-size:14px;">
+            เลือกชนิดฐานข้อมูล HOSxP ที่ระบบจะเชื่อมต่อ — <strong>PostgreSQL</strong> (เวอร์ชันปัจจุบัน) หรือ
+            <strong>MySQL / MariaDB</strong> (HOSxP ดั้งเดิม) ระบบจะปรับ SQL และวิธีเชื่อมต่อให้อัตโนมัติ
+        </p>
+        <form method="post" class="row g-3 align-items-end">
+            <input type="hidden" name="action" value="save_db_driver">
+            <div class="col-md-8">
+                <label class="form-label fw-medium">ฐานข้อมูล</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-hdd-stack"></i></span>
+                    <select name="db_driver" class="form-select">
+                        <option value="pgsql" <?php echo $currentDriver === 'pgsql' ? 'selected' : ''; ?>>PostgreSQL (พอร์ต 5432)</option>
+                        <option value="mysql" <?php echo $currentDriver === 'mysql' ? 'selected' : ''; ?>>MySQL / MariaDB (พอร์ต 3306)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary w-100 fw-semibold">
+                    <i class="bi bi-save2-fill me-2"></i>บันทึก
+                </button>
+            </div>
+        </form>
+        <div class="alert alert-warning d-flex align-items-start mt-3 mb-0" style="font-size:13px;">
+            <i class="bi bi-exclamation-triangle-fill me-2 mt-1"></i>
+            <div>
+                หลังเปลี่ยนชนิดฐานข้อมูล ให้ไปที่ <strong>"แก้ไขการเชื่อมต่อ"</strong> ด้านล่าง
+                เพื่อตั้ง Host / Port / User / Password / Database ให้ตรงกับเซิร์ฟเวอร์ใหม่ แล้วกด "ทดสอบการเชื่อมต่อ" ก่อนใช้งานจริง
+            </div>
+        </div>
     </div>
 </div>
 

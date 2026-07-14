@@ -90,9 +90,18 @@ layoutHeader('วิธีการใช้งาน', 'guide');
                 </div>
                 <div class="step-text">
                     เมื่อเปิดโปรแกรมครั้งแรก ระบบจะพาไปหน้า <strong>ตั้งค่าระบบ</strong> อัตโนมัติ —
-                    กรอก Host/Port/User/Password/Database ของ PostgreSQL (HOSxP), URL ของ API และ
+                    กรอก Host/Port/User/Password/Database ของฐานข้อมูล HOSxP, URL ของ API และ
                     <strong>USERNAME (รหัสสถานบริการ ขึ้นต้นด้วย u เช่น u11173)</strong> พร้อม PASSWORD
                     แนะนำให้กดปุ่ม <em>"ทดสอบการเชื่อมต่อ"</em> ก่อนบันทึก — ค่าจะถูกเก็บในไฟล์ <code>config.json</code>
+                    <div class="mt-2 mb-2" style="font-size:14px;">
+                        <i class="bi bi-database-fill-gear me-1"></i>
+                        เลือกชนิดฐานข้อมูลได้ระหว่าง <strong>PostgreSQL</strong> กับ <strong>MySQL / MariaDB</strong> (HOSxP ดั้งเดิม)
+                        ที่หน้า <strong>ตั้งค่า</strong> หรือ <strong>แก้ไขการเชื่อมต่อ</strong> — ปัจจุบันใช้:
+                        <?php $__drv = (defined('DB_DRIVER') ? DB_DRIVER : 'pgsql'); ?>
+                        <span class="badge <?php echo $__drv === 'mysql' ? 'bg-warning text-dark' : 'bg-primary'; ?>">
+                            <?php echo $__drv === 'mysql' ? 'MySQL' : 'PostgreSQL'; ?>
+                        </span>
+                    </div>
                     <div class="mt-2"><a href="config_setup.php" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil-square me-1"></i>ไปหน้าตั้งค่าการเชื่อมต่อ</a></div>
                 </div>
             </div>

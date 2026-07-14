@@ -3,12 +3,23 @@
 // Requires: config.php constants must be defined before include
 
 function core_getDbConnection() {
-    $dsn = "pgsql:host=".PGSQL_HOST.";port=".PGSQL_PORT.";dbname=".PGSQL_DB.";connect_timeout=5";
-    $pdo = new PDO($dsn, PGSQL_USER, PGSQL_PWD, [
+    $opts = [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_TIMEOUT            => 5,
-    ]);
+    ];
+
+    if (DB_DRIVER === 'mysql') {
+        // MySQL / MariaDB (HOSxP ดั้งเดิม) — set charset เป็น tis620 ให้เข้ากับ pipeline TIS-620→UTF-8
+        $dsn = "mysql:host=".PGSQL_HOST.";port=".PGSQL_PORT.";dbname=".PGSQL_DB;
+        $pdo = new PDO($dsn, PGSQL_USER, PGSQL_PWD, $opts);
+        $pdo->exec("SET NAMES ".DB_CHARSET);
+        return $pdo;
+    }
+
+    // PostgreSQL (default)
+    $dsn = "pgsql:host=".PGSQL_HOST.";port=".PGSQL_PORT.";dbname=".PGSQL_DB.";connect_timeout=5";
+    $pdo = new PDO($dsn, PGSQL_USER, PGSQL_PWD, $opts);
     $pdo->exec("SET client_encoding TO '".PGSQL_CHARSET."'");
     return $pdo;
 }
@@ -142,7 +153,7 @@ function runSync($dateStart, $dateEnd, $onProgress = null) {
     };
 
     try {
-        $currentStep++; $notify("เชื่อมต่อฐานข้อมูล PostgreSQL...");
+        $currentStep++; $notify("เชื่อมต่อฐานข้อมูล (".strtoupper(DB_DRIVER).")...");
         $conn = core_getDbConnection();
         $notify("เชื่อมต่อสำเร็จ");
 

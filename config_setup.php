@@ -13,6 +13,7 @@ $testResult = null; // ['ok'=>bool, 'msg'=>string]
 // ค่าเดิม (ถ้ามี) หรือค่า default จาก constants
 $cur = config_load();
 $form = [
+    'db_driver'    => $cur['db_driver']    ?? (defined('DB_DRIVER') ? DB_DRIVER : 'pgsql'),
     'pgsql_host'   => $cur['pgsql_host']   ?? PGSQL_HOST,
     'pgsql_port'   => $cur['pgsql_port']   ?? PGSQL_PORT,
     'pgsql_user'   => $cur['pgsql_user']   ?? PGSQL_USER,
@@ -23,13 +24,22 @@ $form = [
     'password'     => $cur['password']     ?? (defined('PASSWORD') ? PASSWORD : ''),
 ];
 
-/** เชื่อมต่อ PostgreSQL ด้วยค่าที่กรอก (ยังไม่บันทึก) เพื่อทดสอบ */
-function try_db_connect($host, $port, $db, $user, $pwd) {
-    $dsn = "pgsql:host={$host};port={$port};dbname={$db};connect_timeout=5";
-    $pdo = new PDO($dsn, $user, $pwd, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_TIMEOUT => 5,
-    ]);
+/** เชื่อมต่อฐานข้อมูลด้วยค่าที่กรอก (ยังไม่บันทึก) เพื่อทดสอบ — รองรับทั้ง pgsql/mysql */
+function try_db_connect($driver, $host, $port, $db, $user, $pwd) {
+    if ($driver === 'mysql') {
+        $dsn = "mysql:host={$host};port={$port};dbname={$db}";
+        $pdo = new PDO($dsn, $user, $pwd, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 5,
+        ]);
+        $pdo->exec("SET NAMES " . (defined('DB_CHARSET') ? DB_CHARSET : 'tis620'));
+    } else {
+        $dsn = "pgsql:host={$host};port={$port};dbname={$db};connect_timeout=5";
+        $pdo = new PDO($dsn, $user, $pwd, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 5,
+        ]);
+    }
     $pdo->query('SELECT 1');
     return true;
 }
@@ -37,7 +47,10 @@ function try_db_connect($host, $port, $db, $user, $pwd) {
 /** เก็บค่าจากฟอร์ม + validate → คืน [errors[], data[]] */
 function collect_and_validate() {
     $errors = [];
+    $driver = strtolower(trim($_POST['db_driver'] ?? 'pgsql'));
+    if ($driver !== 'mysql') $driver = 'pgsql';
     $d = [
+        'db_driver'    => $driver,
         'pgsql_host'   => trim($_POST['pgsql_host']   ?? ''),
         'pgsql_port'   => trim($_POST['pgsql_port']   ?? ''),
         'pgsql_user'   => trim($_POST['pgsql_user']   ?? ''),
@@ -69,8 +82,9 @@ if (($_POST['action'] ?? '') === 'test') {
         $testResult = ['ok' => false, 'msg' => implode(' · ', $errors)];
     } else {
         try {
-            try_db_connect($d['pgsql_host'], $d['pgsql_port'], $d['pgsql_db'], $d['pgsql_user'], $d['pgsql_pwd']);
-            $testResult = ['ok' => true, 'msg' => 'เชื่อมต่อ PostgreSQL สำเร็จ — พร้อมบันทึก'];
+            try_db_connect($d['db_driver'], $d['pgsql_host'], $d['pgsql_port'], $d['pgsql_db'], $d['pgsql_user'], $d['pgsql_pwd']);
+            $dbLabel = $d['db_driver'] === 'mysql' ? 'MySQL' : 'PostgreSQL';
+            $testResult = ['ok' => true, 'msg' => 'เชื่อมต่อ ' . $dbLabel . ' สำเร็จ — พร้อมบันทึก'];
         } catch (Exception $e) {
             $friendly = function_exists('core_formatDbError') ? core_formatDbError($e->getMessage()) : null;
             $testResult = ['ok' => false, 'msg' => $friendly ? ($friendly['title'] . ' — ' . $friendly['reason']) : $e->getMessage()];
@@ -130,10 +144,21 @@ layoutHeader($firstRun ? 'ตั้งค่าระบบครั้งแร
     <!-- PostgreSQL -->
     <div class="card mb-4">
         <div class="card-header bg-white border-bottom py-3 px-4">
-            <h6 class="mb-0 fw-semibold"><i class="bi bi-database-fill text-primary me-2"></i>ฐานข้อมูล PostgreSQL (HOSxP)</h6>
+            <h6 class="mb-0 fw-semibold"><i class="bi bi-database-fill text-primary me-2"></i>ฐานข้อมูล HOSxP (PostgreSQL / MySQL)</h6>
         </div>
         <div class="card-body p-4">
             <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label fw-medium">ชนิดฐานข้อมูล (Driver)</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-hdd-stack"></i></span>
+                        <select name="db_driver" class="form-select">
+                            <option value="pgsql" <?php echo $form['db_driver'] === 'mysql' ? '' : 'selected'; ?>>PostgreSQL (พอร์ต 5432)</option>
+                            <option value="mysql" <?php echo $form['db_driver'] === 'mysql' ? 'selected' : ''; ?>>MySQL / MariaDB (พอร์ต 3306)</option>
+                        </select>
+                    </div>
+                    <div class="form-text mt-1"><i class="bi bi-info-circle me-1"></i>MySQL คือ HOSxP ดั้งเดิม (ภาษาไทยเก็บเป็น tis620) — XAMPP รองรับได้ทันที</div>
+                </div>
                 <div class="col-md-8">
                     <label class="form-label fw-medium">Host / IP</label>
                     <div class="input-group">
